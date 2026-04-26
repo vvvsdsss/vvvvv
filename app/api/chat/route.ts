@@ -4,10 +4,17 @@ import { verifyToken } from '@/lib/auth';
 import { rateLimit } from '@/lib/ratelimit';
 import OpenAI from 'openai';
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-  baseURL: process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1',
-});
+// 懒加载：只在请求时初始化，避免构建时因环境变量缺失而崩溃
+function getOpenAI() {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey || apiKey === 'sk-test' || apiKey === 'sk-填密钥') {
+    return null;
+  }
+  return new OpenAI({
+    apiKey,
+    baseURL: process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1',
+  });
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -36,6 +43,11 @@ export async function POST(req: NextRequest) {
     const allowedModels = getAllowedModels(user.tier);
     if (!allowedModels.includes(model)) {
       return NextResponse.json({ error: '该模型为Pro专属，请升级后使用' }, { status: 403 });
+    }
+
+    const openai = getOpenAI();
+    if (!openai) {
+      return NextResponse.json({ error: 'AI 服务未配置，请联系管理员' }, { status: 503 });
     }
 
     const stream = await openai.chat.completions.create({
